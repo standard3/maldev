@@ -26,3 +26,7 @@ $ cargo build --target x86_64-pc-windows-msvc ...
 ```shell
 $ cargo build --features payloadplacement
 ```
+
+## Resources
+
+- [Rust Foreign calling conventions](https://doc.rust-lang.org/nomicon/ffi.html#foreign-calling-conventions)
