@@ -12,6 +12,13 @@ $ rustup target add x86_64-pc-windows-msvc
 $ cargo build --target x86_64-pc-windows-msvc ...
 ```
 
+> [!Note]
+> My Nix Flake is private for this repository, if want to use one you can create it and :
+> ```
+> $ git add --intent-to-add flake.nix
+> $ git update-index --assume-unchanged flake.nix
+> ```
+
 ## Available features
 
 ### Payload Placement
