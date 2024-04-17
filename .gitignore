@@ -16,6 +16,3 @@ Cargo.lock
 # Git pre-commit
 .pre-commit*
 
-# Private nix
-flake.lock
-flake.nix
