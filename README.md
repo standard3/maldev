@@ -27,6 +27,17 @@ $ cargo build --target x86_64-pc-windows-msvc ...
 $ cargo build --features payloadplacement
 ```
 
+> [!Note]
+> We can compile our `resources.rc` file and do not use crate `embed-resource`. To do so, we need `x86_64-w64-mingw32-windres`, this can be installed on Nix within a shell :
+> ```
+> $ nix-shell -p pkgsCross.mingwW64.stdenv.cc
+> ```
+> We can then use it :
+> ```
+> $ x86_64-w64-mingw32-windres -i resources.rc -O coff -o resources.res
+> ```
+
 ## Resources
 
 - [Rust Foreign calling conventions](https://doc.rust-lang.org/nomicon/ffi.html#foreign-calling-conventions)
+- [PE explained throught Rust code](https://itehax.com/blog/portable-executable-explained-throught-rust-code)
