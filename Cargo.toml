@@ -33,3 +33,4 @@ embed-resource = "2.4"
 
 [features]
 payloadplacement = []
+encryption = []
