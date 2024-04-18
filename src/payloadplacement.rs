@@ -1,3 +1,7 @@
+use winapi::shared::windef::HICON;
+use winapi::um::libloaderapi::GetModuleHandleW;
+use winapi::um::winuser::{LoadImageW, IMAGE_ICON, MAKEINTRESOURCEW};
+
 pub fn entry() {
     // See with dumpbin.exe /HEADERS /SECTION:.data Z:\maldev.exe
     println!("[i] Payload placement");
@@ -5,6 +9,7 @@ pub fn entry() {
     data_section();
     rdata_section();
     text_section();
+    rsrc_section();
 }
 
 fn data_section() {
@@ -85,4 +90,19 @@ static STATIC_PAYLOAD: [u8; 272] = [
 
 fn text_section() {
     println!("[*] TEXT: Payload: {:p}", &STATIC_PAYLOAD);
+}
+
+fn rsrc_section() {
+    unsafe {
+        let h_instance = GetModuleHandleW(std::ptr::null()); // our exe file
+        let h_icon = LoadImageW(
+            h_instance,
+            MAKEINTRESOURCEW(1), // name in .rc file
+            IMAGE_ICON,          // type
+            0,                   // cx
+            0,                   // cy
+            0,                   // fuLoad
+        ) as HICON;
+        println!("[*] RSRC: Icon: {:p}", h_icon);
+    }
 }
