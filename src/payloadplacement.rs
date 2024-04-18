@@ -1,6 +1,5 @@
-use winapi::shared::windef::HICON;
-use winapi::um::libloaderapi::GetModuleHandleW;
-use winapi::um::winuser::{LoadImageW, IMAGE_ICON, MAKEINTRESOURCEW};
+use winapi::um::libloaderapi::{FindResourceW, LoadResource, LockResource, SizeofResource};
+use winapi::um::winuser::{MAKEINTRESOURCEW, RT_RCDATA};
 
 pub fn entry() {
     // See with dumpbin.exe /HEADERS /SECTION:.data Z:\maldev.exe
@@ -93,16 +92,33 @@ fn text_section() {
 }
 
 fn rsrc_section() {
+    // Read payload from resource section
     unsafe {
-        let h_instance = GetModuleHandleW(std::ptr::null()); // our exe file
-        let h_icon = LoadImageW(
-            h_instance,
-            MAKEINTRESOURCEW(1), // name in .rc file
-            IMAGE_ICON,          // type
-            0,                   // cx
-            0,                   // cy
-            0,                   // fuLoad
-        ) as HICON;
-        println!("[*] RSRC: Icon: {:p}", h_icon);
+        // location of our payload stored in .rsrc
+        let h_rsrc = FindResourceW(core::ptr::null_mut(), MAKEINTRESOURCEW(1), RT_RCDATA);
+
+        // get the handle of the resource, to be used with LockResource
+        // HGLOBAL = Handle associated with a specified pointer to a global memory block
+        let h_global = LoadResource(core::ptr::null_mut(), h_rsrc);
+
+        // get the pointer to our resource data
+        let p_payload_address = LockResource(h_global);
+
+        // get its size
+        let s_payload_size = SizeofResource(core::ptr::null_mut(), h_rsrc);
+
+        println!("[*] RSRC: Payload address: {:p}", p_payload_address);
+        println!("[*] RSRC: Payload size: {}", s_payload_size);
+
+        // Update payload from resource section by copying it to a buffer
+        let mut rsrc_payload = Vec::<u8>::new();
+        rsrc_payload.extend_from_slice(std::slice::from_raw_parts(
+            p_payload_address as *const u8,
+            s_payload_size as usize,
+        ));
+
+        println!("[*] RSRC: Copied payload address: {:p}", &rsrc_payload);
+        println!("[*] RSRC: Copied payload : ");
+        rsrc_payload.iter().for_each(|b| print!("{:02X} ", b));
     }
 }
