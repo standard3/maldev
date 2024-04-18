@@ -1,6 +1,8 @@
 use winapi::um::libloaderapi::{FindResourceW, LoadResource, LockResource, SizeofResource};
 use winapi::um::winuser::{MAKEINTRESOURCEW, RT_RCDATA};
 
+#[allow(dead_code)]
+
 pub fn entry() {
     // See with dumpbin.exe /HEADERS /SECTION:.data Z:\maldev.exe
     println!("[i] Payload placement");
