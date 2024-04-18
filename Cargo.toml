@@ -3,7 +3,6 @@ name = "maldev"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 ntapi = "0.4.1"
@@ -28,6 +27,9 @@ winapi = { version = "0.3.9", features = [
     "handleapi",
     "synchapi",
 ] }
+
+[build-dependencies]
+embed-resource = "2.4"
 
 [features]
 payloadplacement = []
