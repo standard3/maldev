@@ -7,6 +7,8 @@ use winapi::{
     },
 };
 
+mod aes;
+
 #[allow(dead_code)]
 
 pub fn entry() {
@@ -15,6 +17,7 @@ pub fn entry() {
     xor_shellcode();
     rc4_shellcode();
     rc4_shellcode2();
+    aes_shellcode();
 }
 
 fn xor_shellcode() {
@@ -115,4 +118,12 @@ fn rc4_shellcode2() {
 
     print!("[*] RC42: encrypted: ");
     print_hex_data(img.buffer as *const u8, img.length as usize);
+}
+
+fn aes_shellcode() {
+    aes::AES256CBC::new(
+        "uncrackable key".as_bytes(),
+        "initialization vector".as_bytes(),
+        "plaintext".as_bytes().into(),
+    );
 }
