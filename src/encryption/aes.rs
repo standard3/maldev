@@ -2,9 +2,10 @@ use std::mem;
 
 use winapi::shared::{
     bcrypt::{
-        BCryptGetProperty, BCryptOpenAlgorithmProvider, BCryptSetProperty, BCRYPT_AES_ALGORITHM,
-        BCRYPT_ALG_HANDLE, BCRYPT_BLOCK_LENGTH, BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_CBC,
-        BCRYPT_KEY_HANDLE, BCRYPT_OBJECT_LENGTH, NTSTATUS,
+        BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptGetProperty, BCryptOpenAlgorithmProvider,
+        BCryptSetProperty, BCRYPT_AES_ALGORITHM, BCRYPT_ALG_HANDLE, BCRYPT_BLOCK_LENGTH,
+        BCRYPT_BLOCK_PADDING, BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_CBC, BCRYPT_KEY_HANDLE,
+        BCRYPT_OBJECT_LENGTH, NTSTATUS,
     },
     ntdef::{LPCWSTR, NT_SUCCESS, PVOID},
 };
@@ -74,8 +75,13 @@ impl AES256CBC {
         }
 
         // Set Block Cipher mode to CBC, this uses a 32 byte key and a 16 byte IV
+        self.set_cbc_mode(h_algorithm)?;
 
-        todo!();
+        // Generate key object from our key
+        let mut h_key = self.generate_symmetric_key(h_algorithm)?;
+
+        // Run BCryptEncrypt a first time to get the size of the output buffer
+        let output_size = self.encrypt_data(h_key)?;
     }
 
     pub fn decrypt(&self) -> Vec<u8> {
@@ -149,5 +155,68 @@ impl AES256CBC {
         Ok(())
     }
 
-    fn generate_symmetric_key(&self,)
+    fn generate_symmetric_key(
+        &self,
+        h_algorithm: BCRYPT_ALG_HANDLE,
+    ) -> AESErrorResult<BCRYPT_KEY_HANDLE> {
+        let mut h_key: BCRYPT_KEY_HANDLE = std::ptr::null_mut();
+
+        let key_object = std::ptr::null_mut();
+        let key_object_size = 0;
+
+        let key = self.key.as_ptr();
+        let key_size = self.key.len() as u32;
+
+        let flags = 0;
+
+        let status: NTSTATUS = unsafe {
+            BCryptGenerateSymmetricKey(
+                h_algorithm,
+                h_key as *mut BCRYPT_KEY_HANDLE,
+                key_object,
+                key_object_size,
+                key as *mut u8,
+                key_size,
+                flags,
+            )
+        };
+
+        if !NT_SUCCESS(status) {
+            return Err(AESError::GenerateSymmetricKey);
+        }
+
+        Ok(h_key)
+    }
+
+    fn encrypt_data(&self, h_key: BCRYPT_KEY_HANDLE) -> AESErrorResult<Vec<u8>> {
+        let plaintext = self.plaintext.as_ptr();
+        let plaintext_size = self.plaintext.len() as u32;
+
+        let iv = self.iv.as_ptr();
+        let iv_size = AES256_IV_SIZE as u32;
+
+        let output_size = 0;
+        let output = vec![0; output_size as usize];
+
+        let status: NTSTATUS = unsafe {
+            BCryptEncrypt(
+                h_key,
+                plaintext as *mut u8,
+                plaintext_size,
+                std::ptr::null_mut() as PVOID,
+                iv as *mut u8,
+                iv_size,
+                output.as_ptr() as *mut u8,
+                output_size,
+                std::ptr::null_mut(),
+                BCRYPT_BLOCK_PADDING,
+            )
+        };
+
+        if !NT_SUCCESS(status) {
+            return Err(AESError::Encrypt);
+        }
+
+        Ok(output)
+    }
 }
