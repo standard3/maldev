@@ -2,10 +2,10 @@ use std::mem;
 
 use winapi::shared::{
     bcrypt::{
-        BCryptEncrypt, BCryptGenerateSymmetricKey, BCryptGetProperty, BCryptOpenAlgorithmProvider,
-        BCryptSetProperty, BCRYPT_AES_ALGORITHM, BCRYPT_ALG_HANDLE, BCRYPT_BLOCK_LENGTH,
-        BCRYPT_BLOCK_PADDING, BCRYPT_CHAINING_MODE, BCRYPT_CHAIN_MODE_CBC, BCRYPT_KEY_HANDLE,
-        BCRYPT_OBJECT_LENGTH, NTSTATUS,
+        BCryptCloseAlgorithmProvider, BCryptDestroyKey, BCryptEncrypt, BCryptGenerateSymmetricKey,
+        BCryptGetProperty, BCryptOpenAlgorithmProvider, BCryptSetProperty, BCRYPT_AES_ALGORITHM,
+        BCRYPT_ALG_HANDLE, BCRYPT_BLOCK_LENGTH, BCRYPT_BLOCK_PADDING, BCRYPT_CHAINING_MODE,
+        BCRYPT_CHAIN_MODE_CBC, BCRYPT_KEY_HANDLE, BCRYPT_OBJECT_LENGTH, NTSTATUS,
     },
     ntdef::{LPCWSTR, NT_SUCCESS, PVOID},
 };
@@ -15,7 +15,7 @@ fn to_wchar(s: &str) -> Vec<u16> {
 }
 
 #[derive(Debug)]
-enum AESError {
+pub enum AESError {
     AlgorithmProvider,
     GetProperty,
     SetProperty,
@@ -24,7 +24,7 @@ enum AESError {
     BadBlockSize,
 }
 
-type AESErrorResult<T> = Result<T, AESError>;
+pub type AESErrorResult<T> = Result<T, AESError>;
 
 pub const AES256_BLOCK_SIZE: usize = 16;
 pub const AES256_KEY_SIZE: usize = 32;
@@ -51,26 +51,29 @@ impl AES256CBC {
         }
     }
 
-    pub fn encrypt(&self) -> AESErrorResult<u8> {
-        let mut h_algorithm: BCRYPT_ALG_HANDLE = std::ptr::null_mut();
+    pub fn encrypt(&self) -> AESErrorResult<Vec<u8>> {
+        let mut h_algorithm: BCRYPT_ALG_HANDLE = unsafe { std::mem::zeroed() };
+
+        println!("[i] AES: Initializing the algorithm provider");
 
         // Initialize the algorithm provider for AES
         h_algorithm = self.get_algorithm_provider(h_algorithm)?;
 
+        println!("[i] AES: Get the size of the key object and block size");
+
         // Get the size of the key object, used for generate_symmetric_key() later
-        let key_object_size = self.get_property(
-            h_algorithm,
-            to_wchar(BCRYPT_OBJECT_LENGTH).as_ptr() as LPCWSTR,
-        )?;
+        let key_object_size = self.get_property(h_algorithm, BCRYPT_OBJECT_LENGTH)?;
 
         // Get the size of the block used
-        let block_size = self.get_property(
-            h_algorithm,
-            to_wchar(BCRYPT_BLOCK_LENGTH).as_ptr() as LPCWSTR,
-        )?;
+        let block_size = self.get_property(h_algorithm, BCRYPT_BLOCK_LENGTH)?;
+
+        println!(
+            "[i] AES: key_object_size = {}, block_size = {}",
+            key_object_size, block_size
+        );
 
         // Check block size
-        if block_size != AES256_BLOCK_SIZE as u8 {
+        if block_size as u8 != AES256_BLOCK_SIZE as u8 {
             return Err(AESError::BadBlockSize);
         }
 
@@ -78,10 +81,21 @@ impl AES256CBC {
         self.set_cbc_mode(h_algorithm)?;
 
         // Generate key object from our key
-        let mut h_key = self.generate_symmetric_key(h_algorithm)?;
+        let h_key = self.generate_symmetric_key(h_algorithm, key_object_size as u32)?;
 
         // Run BCryptEncrypt a first time to get the size of the output buffer
-        let output_size = self.encrypt_data(h_key)?;
+        let output_size = self.get_output_buffer_size(h_key)?;
+
+        // Encrypt the data
+        let cipher_text = self.encrypt_data(h_key, output_size)?;
+
+        // Clean up
+        unsafe {
+            BCryptCloseAlgorithmProvider(h_algorithm, 0);
+            BCryptDestroyKey(h_key);
+        }
+
+        Ok(cipher_text)
     }
 
     pub fn decrypt(&self) -> Vec<u8> {
@@ -90,15 +104,13 @@ impl AES256CBC {
 
     fn get_algorithm_provider(
         &self,
-        h_algorithm: BCRYPT_ALG_HANDLE,
+        mut h_algorithm: BCRYPT_ALG_HANDLE,
     ) -> AESErrorResult<BCRYPT_ALG_HANDLE> {
-        let implementation = std::ptr::null();
-
         let status: NTSTATUS = unsafe {
             BCryptOpenAlgorithmProvider(
-                h_algorithm as *mut PVOID,
+                &mut h_algorithm,
                 to_wchar(BCRYPT_AES_ALGORITHM).as_ptr() as LPCWSTR,
-                implementation,
+                std::ptr::null(),
                 0,
             )
         };
@@ -110,33 +122,30 @@ impl AES256CBC {
         Ok(h_algorithm)
     }
 
-    fn get_property(
-        &self,
-        h_algorithm: BCRYPT_ALG_HANDLE,
-        property: LPCWSTR,
-    ) -> AESErrorResult<u8> {
+    fn get_property(&self, h_algorithm: BCRYPT_ALG_HANDLE, property: &str) -> AESErrorResult<u32> {
         // The address of a buffer that receives the property value.
         // The cbOutput parameter contains the size of this buffer.
-        let output: u8 = 0;
+        let output: u32 = 0;
+        let mut bytes_copied = 0; // useless for now
 
-        let result = std::ptr::null_mut();
-        let flags = 0;
+        let mut test = [0; 4];
 
         let status: NTSTATUS = unsafe {
             BCryptGetProperty(
                 h_algorithm,
-                property,
-                output as *mut u8,
-                mem::size_of::<u8>() as u32,
-                result,
-                flags,
+                to_wchar(property).as_ptr(),
+                test.as_mut_ptr(),
+                std::mem::size_of::<u32>() as u32,
+                &mut bytes_copied,
+                0,
             )
         };
 
         if !NT_SUCCESS(status) {
             return Err(AESError::GetProperty);
         }
-
+        println!("DBG: output = {}", output);
+        println!("DBG: bytes_copied = {}", bytes_copied);
         Ok(output)
     }
 
@@ -158,11 +167,11 @@ impl AES256CBC {
     fn generate_symmetric_key(
         &self,
         h_algorithm: BCRYPT_ALG_HANDLE,
+        key_object_size: u32,
     ) -> AESErrorResult<BCRYPT_KEY_HANDLE> {
         let mut h_key: BCRYPT_KEY_HANDLE = std::ptr::null_mut();
 
         let key_object = std::ptr::null_mut();
-        let key_object_size = 0;
 
         let key = self.key.as_ptr();
         let key_size = self.key.len() as u32;
@@ -188,15 +197,14 @@ impl AES256CBC {
         Ok(h_key)
     }
 
-    fn encrypt_data(&self, h_key: BCRYPT_KEY_HANDLE) -> AESErrorResult<Vec<u8>> {
+    fn encrypt_data(&self, h_key: BCRYPT_KEY_HANDLE, size: u32) -> AESErrorResult<Vec<u8>> {
         let plaintext = self.plaintext.as_ptr();
         let plaintext_size = self.plaintext.len() as u32;
 
         let iv = self.iv.as_ptr();
         let iv_size = AES256_IV_SIZE as u32;
 
-        let output_size = 0;
-        let output = vec![0; output_size as usize];
+        let output = vec![0; size as usize];
 
         let status: NTSTATUS = unsafe {
             BCryptEncrypt(
@@ -207,7 +215,7 @@ impl AES256CBC {
                 iv as *mut u8,
                 iv_size,
                 output.as_ptr() as *mut u8,
-                output_size,
+                size,
                 std::ptr::null_mut(),
                 BCRYPT_BLOCK_PADDING,
             )
@@ -218,5 +226,36 @@ impl AES256CBC {
         }
 
         Ok(output)
+    }
+
+    fn get_output_buffer_size(&self, h_key: BCRYPT_KEY_HANDLE) -> AESErrorResult<u32> {
+        let plaintext = self.plaintext.as_ptr();
+        let plaintext_size = self.plaintext.len() as u32;
+
+        let iv = self.iv.as_ptr();
+        let iv_size = AES256_IV_SIZE as u32;
+
+        let size: u32 = 0;
+
+        let status: NTSTATUS = unsafe {
+            BCryptEncrypt(
+                h_key,
+                plaintext as *mut u8,
+                plaintext_size,
+                std::ptr::null_mut() as PVOID,
+                iv as *mut u8,
+                iv_size,
+                std::ptr::null_mut(),
+                0,
+                size as *mut u32,
+                BCRYPT_BLOCK_PADDING,
+            )
+        };
+
+        if !NT_SUCCESS(status) {
+            return Err(AESError::Encrypt);
+        }
+
+        Ok(size)
     }
 }

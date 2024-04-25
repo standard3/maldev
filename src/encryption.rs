@@ -118,12 +118,29 @@ fn rc4_shellcode2() {
 
     print!("[*] RC42: encrypted: ");
     print_hex_data(img.buffer as *const u8, img.length as usize);
+    println!();
 }
 
 fn aes_shellcode() {
-    aes::AES256CBC::new(
-        "uncrackable key".as_bytes(),
-        "initialization vector".as_bytes(),
-        "plaintext".as_bytes().into(),
+    let shellcode = vec![0, 1, 2, 3, 4, 5, 6, 7];
+    let key = b"uncrackable key";
+    let iv = b"initialization vector";
+
+    println!(
+        "[*] AES: shellcode = {:?}, key = {:?}, iv = {:?}",
+        shellcode, key, iv
     );
+
+    let test = aes::AES256CBC::new(key, iv, shellcode.into());
+
+    let cipher_text = test.encrypt();
+
+    match cipher_text {
+        Ok(cipher_text) => {
+            println!("[*] AES: encrypted = {:?}", cipher_text);
+        }
+        Err(e) => {
+            println!("[-] AES: error = {:?}", e);
+        }
+    }
 }
