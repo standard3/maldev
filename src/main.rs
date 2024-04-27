@@ -1,4 +1,5 @@
 mod encryption;
+mod obfuscation;
 mod payloadplacement;
 
 fn main() {
@@ -7,4 +8,7 @@ fn main() {
 
     #[cfg(feature = "encryption")]
     encryption::entry();
+
+    #[cfg(feature = "obfuscation")]
+    obfuscation::entry();
 }
